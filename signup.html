@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>회원가입 | Renewables</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Pretendard Variable', Pretendard, sans-serif;
+      background: #fafafa;
+      color: #1a1a1a;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh; padding: 20px;
+    }
+    .box {
+      width: 100%; max-width: 400px;
+      background: #fff; border: 1px solid #e5e5e5;
+      padding: 40px 32px;
+    }
+    .logo { text-align: center; font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { text-align: center; color: #888; font-size: 13px; margin-bottom: 28px; }
+    label { display: block; font-size: 13px; color: #555; margin-bottom: 6px; margin-top: 14px; }
+    input {
+      width: 100%; padding: 12px 14px; border: 1px solid #ddd;
+      font-size: 14px; font-family: inherit;
+    }
+    input:focus { outline: none; border-color: #1a1a1a; }
+    .hint { font-size: 11px; color: #888; margin-top: 4px; }
+    .submit-btn {
+      width: 100%; background: #1a1a1a; color: #fff; border: none;
+      padding: 14px; font-size: 15px; font-weight: 600;
+      cursor: pointer; font-family: inherit; margin-top: 24px;
+    }
+    .submit-btn:hover { background: #000; }
+    .submit-btn:disabled { background: #ccc; cursor: not-allowed; }
+    .error, .success {
+      padding: 10px; font-size: 13px; margin-bottom: 16px; display: none;
+    }
+    .error { background: #fff5f5; border: 1px solid #ffcdd2; color: #c62828; }
+    .success { background: #f1f8f4; border: 1px solid #c8e6c9; color: #2e7d32; }
+    .links { margin-top: 18px; text-align: center; font-size: 13px; }
+    .links a { color: #555; text-decoration: none; }
+    .agree { display: flex; align-items: flex-start; gap: 8px; margin-top: 20px; font-size: 12px; color: #666; }
+    .agree input { width: auto; margin-top: 2px; }
+  </style>
+</head>
+<body>
+  <div class="box">
+    <div class="logo">RENEWABLES</div>
+    <div class="subtitle">회원가입</div>
+
+    <div id="error" class="error"></div>
+    <div id="success" class="success"></div>
+
+    <form id="signup-form" onsubmit="signUp(event)">
+      <label>닉네임 *</label>
+      <input type="text" id="nickname" required minlength="2" maxlength="20">
+      <div class="hint">게시판 활동 시 표시될 이름 (2~20자)</div>
+
+      <label>이메일 *</label>
+      <input type="email" id="email" required>
+
+      <label>비밀번호 *</label>
+      <input type="password" id="password" required minlength="8">
+      <div class="hint">최소 8자 이상</div>
+
+      <label>비밀번호 확인 *</label>
+      <input type="password" id="password-confirm" required minlength="8">
+
+      <div class="agree">
+        <input type="checkbox" id="agree" required>
+        <label for="agree" style="margin:0;">
+          <a href="/privacy.html" target="_blank">개인정보 처리방침</a> 및 
+          <a href="/terms.html" target="_blank">이용약관</a>에 동의합니다.
+        </label>
+      </div>
+
+      <button type="submit" class="submit-btn" id="submit-btn">회원가입</button>
+    </form>
+
+    <div class="links">
+      이미 계정이 있으신가요? <a href="/login.html">로그인</a>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/supabase-client.js"></script>
+  <script>
+    function show(id, msg) {
+      const el = document.getElementById(id);
+      el.textContent = msg; el.style.display = 'block';
+    }
+    function hide(id) { document.getElementById(id).style.display = 'none'; }
+
+    async function signUp(e) {
+      e.preventDefault();
+      hide('error'); hide('success');
+
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true; btn.textContent = '가입 중...';
+
+      const nickname = document.getElementById('nickname').value.trim();
+      const email = document.getElementById('email').value.trim();
+      const password = document.getElementById('password').value;
+      const passwordConfirm = document.getElementById('password-confirm').value;
+
+      if (password !== passwordConfirm) {
+        show('error', '비밀번호가 일치하지 않습니다.');
+        btn.disabled = false; btn.textContent = '회원가입';
+        return;
+      }
+
+      // 닉네임 중복 체크
+      const { data: existing } = await supabaseClient
+        .from('profiles')
+        .select('id')
+        .eq('nickname', nickname)
+        .maybeSingle();
+      
+      if (existing) {
+        show('error', '이미 사용 중인 닉네임입니다.');
+        btn.disabled = false; btn.textContent = '회원가입';
+        return;
+      }
+
+      // 회원가입 요청
+      const { data, error } = await supabaseClient.auth.signUp({
+        email, password,
+        options: {
+          data: { nickname },
+          emailRedirectTo: window.location.origin + '/auth-callback.html'
+        }
+      });
+
+      if (error) {
+        show('error', '회원가입 실패: ' + error.message);
+        btn.disabled = false; btn.textContent = '회원가입';
+        return;
+      }
+
+      show('success', '가입이 완료되었습니다! 이메일로 발송된 인증 링크를 클릭해 주세요.');
+      btn.textContent = '가입 완료';
+      setTimeout(() => window.location.href = '/login.html', 3000);
+    }
+  </script>
+</body>
+</html>
