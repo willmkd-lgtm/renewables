@@ -1,1 +1,89 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>대시보드 - Renewables</title>
+<meta name="description" content="SMP·REC 실시간 차트와 30일 추이 분석">
+<link rel="stylesheet" href="assets/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+</head>
+<body>
 
+<nav class="nav">
+  <div class="nav-inner">
+    <a href="/" class="logo">⚡ Renewables</a>
+    <div class="nav-links">
+      <a href="/dashboard.html">대시보드</a>
+      <a href="/about.html">소개</a>
+      <a href="/#subscribe">구독</a>
+    </div>
+  </div>
+</nav>
+
+<div class="container">
+  <h1 class="section-title" style="text-align:left; margin-bottom:8px">📊 SMP·REC 대시보드</h1>
+  <p style="color:var(--text-secondary); margin-bottom:32px" id="updated-time">데이터 로딩 중...</p>
+
+  <!-- 오늘 데이터 요약 -->
+  <div class="grid grid-3" style="margin-bottom:32px">
+    <div class="live-card">
+      <div class="label">오늘 평균 SMP</div>
+      <div class="value" id="smp-value">--</div>
+      <div class="unit">원 / kWh</div>
+      <div class="change" id="smp-change">--</div>
+    </div>
+    <div class="live-card">
+      <div class="label">오늘 최대 SMP</div>
+      <div class="value" id="smp-max" style="background: linear-gradient(90deg, #ef4444, #f59e0b); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">--</div>
+      <div class="unit">원 / kWh</div>
+    </div>
+    <div class="live-card">
+      <div class="label">오늘 최소 SMP</div>
+      <div class="value" id="smp-min" style="background: linear-gradient(90deg, #10b981, #3b82f6); -webkit-background-clip:text; -webkit-text-fill-color:transparent;">--</div>
+      <div class="unit">원 / kWh</div>
+    </div>
+  </div>
+
+  <!-- 30일 SMP 차트 -->
+  <div class="chart-wrap">
+    <h3>📈 최근 30일 SMP 추이 <span style="font-size:13px; color:var(--text-muted); font-weight:normal">(단위: 원/kWh)</span></h3>
+    <canvas id="smpChart"></canvas>
+  </div>
+
+  <!-- 일별 표 -->
+  <div class="chart-wrap">
+    <h3>📅 일별 상세 데이터</h3>
+    <div style="overflow-x:auto">
+      <table class="table" id="dataTable">
+        <thead>
+          <tr>
+            <th>날짜</th>
+            <th style="text-align:right">평균</th>
+            <th style="text-align:right">최대</th>
+            <th style="text-align:right">최소</th>
+            <th style="text-align:right">변동폭</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+          <tr><td colspan="5" style="text-align:center; color:var(--text-muted)">로딩 중...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<footer class="footer">
+  <div class="footer-links">
+    <a href="/">홈</a>
+    <a href="/dashboard.html">대시보드</a>
+    <a href="/about.html">소개</a>
+    <a href="mailto:contact@renewables.co.kr">문의</a>
+  </div>
+  <p>© 2026 Renewables · 데이터 출처: 전력거래소(KPX)</p>
+</footer>
+
+<script src="assets/app.js"></script>
+<script src="assets/dashboard.js"></script>
+</body>
+</html>
