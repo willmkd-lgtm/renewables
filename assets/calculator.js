@@ -1,64 +1,114 @@
 // ================================================
-// Renewables 사업성 분석 계산기 v4
-// - 체크박스 제거 → 버튼 방식
-// - 빈칸 시작 + 권장값 버튼
-// - REC 가중치 수기 입력
-// - 수수료 금액 직접 입력
+// Renewables 사업성 분석 계산기 v5 (버그 수정)
+// - 이벤트 핸들러 즉시 연결 (JSON 독립)
+// - 기본값 하드코딩 (fallback)
+// - 명시적 "계산하기" 버튼 추가
 // ================================================
 
-let ASSUMPTIONS = null;
-let currentResult = null;
+// 🔵 하드코딩 기본값 (JSON 실패해도 동작)
+const FALLBACK = {
+  smp: { annual_avg_krw_per_kwh: 111.96 },
+  rec: { spot_avg_krw: 70000 },
+  capex: { default_per_kw_krw: 2300000 },
+  loan: { default_ratio: 0.7, default_interest_rate: 0.05, default_grace_years: 2, default_repay_years: 18 },
+  operation: {
+    default_utilization: 0.1667,
+    default_hours_per_day: 4.0,
+    module_decay_per_year: 0.002,
+    opex_default_m_krw_per_100kw: 1.2
+  },
+  fees: { default_ratio: 0.10 },
+  financial: {
+    inflation: 0.022,
+    corporate_tax_rate: 0.11,
+    personal_simple_rate_bands: [
+      { max_revenue: 36000000, rate: 0.951, desc: "수입 3,600만원 미만" },
+      { max_revenue: 150000000, rate: 0.8726, desc: "3,600만~1.5억" },
+      { max_revenue: 385000000, rate: 0.8432, desc: "1.5억~3.85억" }
+    ],
+    personal_standard_expense_rate: 0.238,
+    income_tax_brackets: [
+      { max: 14000000, rate: 0.06, deduction: 0 },
+      { max: 50000000, rate: 0.15, deduction: 1260000 },
+      { max: 88000000, rate: 0.24, deduction: 5760000 },
+      { max: 150000000, rate: 0.35, deduction: 15440000 },
+      { max: 300000000, rate: 0.38, deduction: 19940000 },
+      { max: 500000000, rate: 0.40, deduction: 25940000 },
+      { max: 1000000000, rate: 0.42, deduction: 35940000 },
+      { max: null, rate: 0.45, deduction: 65940000 }
+    ],
+    local_income_tax_addon: 0.10,
+    wacc: 0.05
+  }
+};
 
-async function loadAssumptions() {
-  const res = await fetch('data/assumptions.json?t=' + Date.now());
-  ASSUMPTIONS = await res.json();
-  setupEventHandlers();
+let ASSUMPTIONS = FALLBACK;  // 🔵 즉시 기본값 할당 (null 방지)
+let currentResult = null;
+let isUpdatingUtil = false;
+
+// ========== 유틸 ==========
+
+function num(id) {
+  const el = document.getElementById(id);
+  if (!el) return 0;
+  return parseFloat(el.value) || 0;
+}
+
+function setVal(id, v) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = v;
   recalculate();
 }
 
-// ========== 권장값 버튼들 ==========
+// ========== 프리셋 (버튼 클릭 시 실행) ==========
 
 const PRESETS = {
   capex_total: () => {
     const cap = num('capacity_kw');
-    if (cap <= 0) return alert('먼저 발전용량을 입력하세요');
-    if (cap > 200) return alert('200kW 초과는 프로젝트별 편차가 커서 직접 입력하세요');
+    if (cap <= 0) { alert('먼저 발전용량을 입력하세요'); return; }
+    if (cap > 200) { alert('200kW 초과는 프로젝트별 편차가 커서 직접 입력하세요'); return; }
     setVal('capex_total', (cap / 100 * 230).toFixed(1));
   },
   loan_amount: () => {
     const capex = num('capex_total');
-    if (capex <= 0) return alert('먼저 총 투자비를 입력하세요');
+    if (capex <= 0) { alert('먼저 총 투자비를 입력하세요'); return; }
     setVal('loan_amount', (capex * 0.7).toFixed(1));
   },
   interest_rate: () => setVal('interest_rate', (ASSUMPTIONS.loan.default_interest_rate * 100).toFixed(1)),
   loan_all: () => {
     const capex = num('capex_total');
-    if (capex <= 0) return alert('먼저 총 투자비를 입력하세요');
-    setVal('loan_amount', (capex * 0.7).toFixed(1));
-    setVal('interest_rate', 5.0);
-    setVal('grace_years', 2);
-    setVal('repay_years', 18);
+    if (capex <= 0) { alert('먼저 총 투자비를 입력하세요'); return; }
+    document.getElementById('loan_amount').value = (capex * 0.7).toFixed(1);
+    document.getElementById('interest_rate').value = 5.0;
+    document.getElementById('grace_years').value = 2;
+    document.getElementById('repay_years').value = 18;
+    recalculate();
   },
   smp_price: () => setVal('smp_price', ASSUMPTIONS.smp.annual_avg_krw_per_kwh.toFixed(2)),
   rec_price: () => setVal('rec_price', ASSUMPTIONS.rec.spot_avg_krw),
   rec_weight: () => setVal('rec_weight', '1.0'),
   utilization_pct: () => {
-    setVal('utilization_pct', (ASSUMPTIONS.operation.default_utilization * 100).toFixed(2));
-    syncUtil('pct');
+    const pct = (ASSUMPTIONS.operation.default_utilization * 100).toFixed(2);
+    document.getElementById('utilization_pct').value = pct;
+    document.getElementById('utilization_hr').value = (pct / 100 * 24).toFixed(2);
+    recalculate();
   },
   utilization_hr: () => {
-    setVal('utilization_hr', ASSUMPTIONS.operation.default_hours_per_day.toFixed(2));
-    syncUtil('hr');
+    const hr = ASSUMPTIONS.operation.default_hours_per_day.toFixed(2);
+    document.getElementById('utilization_hr').value = hr;
+    document.getElementById('utilization_pct').value = (hr / 24 * 100).toFixed(2);
+    recalculate();
   },
   module_decay: () => setVal('module_decay', (ASSUMPTIONS.operation.module_decay_per_year * 100).toFixed(2)),
   opex_annual: () => {
     const cap = num('capacity_kw');
-    if (cap <= 0) return alert('먼저 발전용량을 입력하세요');
+    if (cap <= 0) { alert('먼저 발전용량을 입력하세요'); return; }
     setVal('opex_annual', (cap / 100 * ASSUMPTIONS.operation.opex_default_m_krw_per_100kw).toFixed(2));
   },
   fee_amount: () => {
     const capex = num('capex_total');
-    if (capex <= 0) return alert('먼저 총 투자비를 입력하세요');
+    if (capex <= 0) { alert('먼저 총 투자비를 입력하세요'); return; }
     setVal('fee_amount', (capex * 0.10).toFixed(1));
   },
   inflation: () => setVal('inflation', (ASSUMPTIONS.financial.inflation * 100).toFixed(1)),
@@ -68,99 +118,61 @@ const PRESETS = {
 // 전체 기본값 한 번에 채우기
 function fillAllDefaults() {
   const A = ASSUMPTIONS;
-  if (num('capacity_kw') <= 0) setVal('capacity_kw', 100);
-  const cap = num('capacity_kw');
-  
-  if (cap <= 200) setVal('capex_total', (cap / 100 * 230).toFixed(1));
-  const capex = num('capex_total') || 230;
-  
-  setVal('loan_amount', (capex * 0.7).toFixed(1));
-  setVal('interest_rate', 5.0);
-  setVal('grace_years', 2);
-  setVal('repay_years', 18);
-  setVal('smp_price', A.smp.annual_avg_krw_per_kwh.toFixed(2));
-  setVal('rec_price', A.rec.spot_avg_krw);
-  setVal('rec_weight', '1.0');
-  setVal('utilization_pct', (A.operation.default_utilization * 100).toFixed(2));
-  setVal('utilization_hr', A.operation.default_hours_per_day.toFixed(2));
-  setVal('module_decay', (A.operation.module_decay_per_year * 100).toFixed(2));
-  setVal('opex_annual', (cap / 100 * A.operation.opex_default_m_krw_per_100kw).toFixed(2));
-  setVal('rent', 0);
-  setVal('fee_amount', (capex * 0.10).toFixed(1));
-  setVal('inflation', (A.financial.inflation * 100).toFixed(1));
-  setVal('wacc', (A.financial.wacc * 100).toFixed(1));
-  
+  document.getElementById('capacity_kw').value = 100;
+  document.getElementById('capex_total').value = 230;
+  document.getElementById('loan_amount').value = 161;
+  document.getElementById('interest_rate').value = (A.loan.default_interest_rate * 100).toFixed(1);
+  document.getElementById('grace_years').value = A.loan.default_grace_years;
+  document.getElementById('repay_years').value = A.loan.default_repay_years;
+  document.getElementById('smp_price').value = A.smp.annual_avg_krw_per_kwh.toFixed(2);
+  document.getElementById('rec_price').value = A.rec.spot_avg_krw;
+  document.getElementById('rec_weight').value = 1.0;
+  document.getElementById('utilization_pct').value = (A.operation.default_utilization * 100).toFixed(2);
+  document.getElementById('utilization_hr').value = A.operation.default_hours_per_day.toFixed(2);
+  document.getElementById('module_decay').value = (A.operation.module_decay_per_year * 100).toFixed(2);
+  document.getElementById('opex_annual').value = A.operation.opex_default_m_krw_per_100kw;
+  document.getElementById('rent').value = 0;
+  document.getElementById('fee_amount').value = 23;
+  document.getElementById('inflation').value = (A.financial.inflation * 100).toFixed(1);
+  document.getElementById('wacc').value = (A.financial.wacc * 100).toFixed(1);
+  console.log('[Renewables] 전체 기본값 입력 완료');
   recalculate();
 }
 
-// ========== 유틸 ==========
+// ========== 이용률 ↔ 시간 연동 ==========
 
-function num(id) { return parseFloat(document.getElementById(id).value) || 0; }
-function setVal(id, v) { document.getElementById(id).value = v; recalculate(); }
-
-// 이용률 ↔ 시간/일 양방향 연동
-let isUpdatingUtil = false;
 function syncUtil(source) {
   if (isUpdatingUtil) return;
   isUpdatingUtil = true;
-  if (source === 'pct') {
-    const pct = num('utilization_pct');
-    document.getElementById('utilization_hr').value = (pct / 100 * 24).toFixed(2);
-  } else {
-    const hr = num('utilization_hr');
-    document.getElementById('utilization_pct').value = (hr / 24 * 100).toFixed(2);
+  try {
+    if (source === 'pct') {
+      const pct = num('utilization_pct');
+      document.getElementById('utilization_hr').value = (pct / 100 * 24).toFixed(2);
+    } else if (source === 'hr') {
+      const hr = num('utilization_hr');
+      document.getElementById('utilization_pct').value = (hr / 24 * 100).toFixed(2);
+    }
+  } finally {
+    isUpdatingUtil = false;
   }
-  isUpdatingUtil = false;
 }
 
-// ========== 이벤트 핸들러 ==========
-
-function setupEventHandlers() {
-  // 모든 input 변경 시 재계산
-  document.querySelectorAll('input, select').forEach(el => {
-    el.addEventListener('input', () => {
-      if (el.id === 'utilization_pct') syncUtil('pct');
-      if (el.id === 'utilization_hr') syncUtil('hr');
-      if (el.id === 'capacity_kw') checkLargeProject();
-      recalculate();
-    });
-  });
-  
-  // 프리셋 버튼들
-  document.querySelectorAll('[data-preset]').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const key = btn.getAttribute('data-preset');
-      if (PRESETS[key]) PRESETS[key]();
-    });
-  });
-  
-  // 전체 채우기
-  document.getElementById('btn_fill_all').addEventListener('click', fillAllDefaults);
-  
-  // 사업자 유형
-  document.querySelectorAll('[name="biz_type"]').forEach(r => {
-    r.addEventListener('change', () => {
-      updateTaxUI();
-      recalculate();
-    });
-  });
-  
-  document.getElementById('btn_pdf').addEventListener('click', () => {
-    window.print();
-  });
-  
-  updateTaxUI();
-}
+// ========== 사업자 유형 UI ==========
 
 function updateTaxUI() {
-  const type = document.querySelector('[name="biz_type"]:checked').value;
-  document.getElementById('tax_corp_box').style.display = type === 'corporate' ? 'block' : 'none';
-  document.getElementById('tax_personal_box').style.display = type === 'personal' ? 'block' : 'none';
+  const sel = document.querySelector('[name="biz_type"]:checked');
+  if (!sel) return;
+  const type = sel.value;
+  const corpBox = document.getElementById('tax_corp_box');
+  const personalBox = document.getElementById('tax_personal_box');
+  if (corpBox) corpBox.style.display = type === 'corporate' ? 'block' : 'none';
+  if (personalBox) personalBox.style.display = type === 'personal' ? 'block' : 'none';
 }
 
 function checkLargeProject() {
   const cap = num('capacity_kw');
-  document.getElementById('large_project_warning').style.display = cap >= 1000 ? 'block' : 'none';
+  const el = document.getElementById('large_project_warning');
+  if (el) el.style.display = cap >= 1000 ? 'block' : 'none';
 }
 
 // ========== 입력값 수집 ==========
@@ -170,7 +182,9 @@ function getInputs() {
   const rec = num('rec_price');
   const weight = num('rec_weight');
   const salesPrice = smp + (rec * weight / 1000);
-  
+  const bizSel = document.querySelector('[name="biz_type"]:checked');
+  const infSel = document.getElementById('inflation_to_sales');
+
   return {
     capacity_kw: num('capacity_kw'),
     capex_total: num('capex_total'),
@@ -188,22 +202,22 @@ function getInputs() {
     repay_years: parseInt(document.getElementById('repay_years').value) || 0,
     fee_amount: num('fee_amount'),
     inflation: num('inflation') / 100,
-    inflation_to_sales: document.getElementById('inflation_to_sales').checked,
+    inflation_to_sales: infSel ? infSel.checked : false,
     wacc: num('wacc') / 100,
-    biz_type: document.querySelector('[name="biz_type"]:checked').value
+    biz_type: bizSel ? bizSel.value : 'corporate'
   };
 }
 
-// ========== 세금 계산 ==========
+// ========== 세금 ==========
 
 function getSimpleExpenseRate(revenue_won) {
   const bands = ASSUMPTIONS.financial.personal_simple_rate_bands;
   for (const b of bands) {
     if (revenue_won < b.max_revenue) return { rate: b.rate, desc: b.desc };
   }
-  return { 
-    rate: 1 - ASSUMPTIONS.financial.personal_standard_expense_rate, 
-    desc: '3.85억 초과 (복식부기 의무)',
+  return {
+    rate: 1 - ASSUMPTIONS.financial.personal_standard_expense_rate,
+    desc: '3.85억 초과 (복식부기)',
     is_bookkeeping: true
   };
 }
@@ -231,21 +245,21 @@ function calculate(inp) {
   const fee_amount = inp.fee_amount;
   const equity_with_fee = equity + fee_amount;
   const total_cash_need = capex + fee_amount;
-  
+
   const results = [];
   let loan_balance = debt;
   let cumulative_fcff = -capex;
   let payback_year = null;
   let total_tax_20y = 0;
-  
+
   for (let y = 1; y <= years; y++) {
     const module_eff = Math.pow(1 - inp.module_decay, y - 1);
     const generation_mwh = inp.capacity_kw / 1000 * inp.utilization * 8760 * module_eff;
     const generation_kwh = generation_mwh * 1000;
-    const price_y = inp.inflation_to_sales 
+    const price_y = inp.inflation_to_sales
       ? inp.sales_price * Math.pow(1 + inp.inflation, y - 1)
       : inp.sales_price;
-    
+
     const revenue_mil = generation_kwh * price_y / 1_000_000;
     const revenue_won = revenue_mil * 1_000_000;
     const opex = inp.opex_annual * Math.pow(1 + inp.inflation, y - 1);
@@ -256,9 +270,8 @@ function calculate(inp) {
     const interest = loan_balance * inp.interest_rate;
     const principal = y > inp.grace_years ? Math.min(annual_principal, loan_balance) : 0;
     const ebt = ebit - interest;
-    
-    let tax_won = 0;
-    let tax_desc = '';
+
+    let tax_won = 0, tax_desc = '';
     if (inp.biz_type === 'corporate') {
       tax_won = Math.max(0, ebt * 1_000_000 * ASSUMPTIONS.financial.corporate_tax_rate);
       tax_desc = '법인세 11%';
@@ -266,7 +279,7 @@ function calculate(inp) {
       const expenseInfo = getSimpleExpenseRate(revenue_won);
       if (expenseInfo.is_bookkeeping) {
         tax_won = calcIncomeTax(ebt * 1_000_000);
-        tax_desc = `복식부기 (3.85억+)`;
+        tax_desc = '복식부기';
       } else {
         const deemed_income = revenue_won * (1 - expenseInfo.rate);
         tax_won = calcIncomeTax(deemed_income);
@@ -276,17 +289,17 @@ function calculate(inp) {
     const tax_mil = tax_won / 1_000_000;
     const net_income = ebt - tax_mil;
     total_tax_20y += tax_mil;
-    
+
     const effective_tax_rate = ebt > 0 ? tax_mil / ebt : 0;
     const noplat = ebit * (1 - effective_tax_rate);
     const fcff = noplat + depreciation;
     const fcfe = fcff - interest * (1 - effective_tax_rate) - principal;
-    
+
     results.push({
       year: y, generation_mwh, revenue: revenue_mil, cogs, ebit,
       interest, principal, ebt, tax: tax_mil, net_income, fcff, fcfe, tax_desc
     });
-    
+
     loan_balance = Math.max(0, loan_balance - principal);
     const prev_cum = cumulative_fcff;
     cumulative_fcff += fcff;
@@ -294,10 +307,10 @@ function calculate(inp) {
       payback_year = y - 1 + Math.abs(prev_cum) / fcff;
     }
   }
-  
+
   const fcff_flow = [-capex, ...results.map(r => r.fcff)];
   const fcfe_flow = [-equity, ...results.map(r => r.fcfe)];
-  
+
   return {
     total_capex: capex, fee_amount, total_cash_need,
     debt, equity, equity_with_fee, annual_principal,
@@ -338,57 +351,62 @@ function calculateNPV(cf, r) {
 // ========== 결과 표시 ==========
 
 function recalculate() {
-  if (!ASSUMPTIONS) return;
-  
-  // 전력판매가 표시
-  const smp = num('smp_price'), rec = num('rec_price'), w = num('rec_weight');
-  const sp = smp + (rec * w / 1000);
-  document.getElementById('sales_price_display').textContent = sp > 0 ? sp.toFixed(2) + '원/kWh' : '-- 원/kWh';
-  
-  const inp = getInputs();
-  
-  // 입력 부족 시
-  if (inp.capacity_kw <= 0 || inp.capex_total <= 0 || inp.sales_price <= 0) {
-    setEmpty();
-    return;
+  try {
+    const smp = num('smp_price'), rec = num('rec_price'), w = num('rec_weight');
+    const sp = smp + (rec * w / 1000);
+    const dispEl = document.getElementById('sales_price_display');
+    if (dispEl) dispEl.textContent = sp > 0 ? sp.toFixed(2) + '원/kWh' : '-- 원/kWh';
+
+    const inp = getInputs();
+
+    if (inp.capacity_kw <= 0 || inp.capex_total <= 0 || inp.sales_price <= 0) {
+      setEmpty();
+      return;
+    }
+
+    const r = calculate(inp);
+    currentResult = r;
+
+    setText('r_project_irr', r.project_irr !== null ? (r.project_irr * 100).toFixed(2) + '%' : 'N/A');
+    setText('r_equity_irr', r.equity_irr !== null ? (r.equity_irr * 100).toFixed(2) + '%' : 'N/A');
+    setText('r_npv', r.npv.toFixed(1) + ' 백만원');
+    setText('r_payback', r.payback !== null ? r.payback.toFixed(1) + '년' : '회수 불가');
+    setText('r_equity', r.equity.toFixed(1) + ' 백만원');
+    setText('r_equity_with_fee', r.equity_with_fee.toFixed(1) + ' 백만원');
+    setText('r_total_capex', r.total_capex.toFixed(1) + ' 백만원');
+    setText('r_fee', r.fee_amount.toFixed(1) + ' 백만원');
+    setText('r_total_need', r.total_cash_need.toFixed(1) + ' 백만원');
+    setText('r_year1_tax', (r.year1_tax * 100).toFixed(0) + '만원');
+    setText('r_year2_tax', (r.year2_tax * 100).toFixed(0) + '만원');
+    setText('r_avg_tax', (r.avg_annual_tax * 100).toFixed(0) + '만원');
+    setText('r_total_tax', r.total_tax_20y.toFixed(1) + ' 백만원');
+    setText('r_tax_desc', r.yearly[0].tax_desc);
+
+    updateChart(r);
+    updateTable(r);
+  } catch (err) {
+    console.error('[Renewables] 계산 오류:', err);
   }
-  
-  const r = calculate(inp);
-  currentResult = r;
-  
-  document.getElementById('r_project_irr').textContent = r.project_irr !== null ? (r.project_irr * 100).toFixed(2) + '%' : 'N/A';
-  document.getElementById('r_equity_irr').textContent = r.equity_irr !== null ? (r.equity_irr * 100).toFixed(2) + '%' : 'N/A';
-  document.getElementById('r_npv').textContent = r.npv.toFixed(1) + ' 백만원';
-  document.getElementById('r_payback').textContent = r.payback !== null ? r.payback.toFixed(1) + '년' : '회수 불가';
-  document.getElementById('r_equity').textContent = r.equity.toFixed(1) + ' 백만원';
-  document.getElementById('r_equity_with_fee').textContent = r.equity_with_fee.toFixed(1) + ' 백만원';
-  document.getElementById('r_total_capex').textContent = r.total_capex.toFixed(1) + ' 백만원';
-  document.getElementById('r_fee').textContent = r.fee_amount.toFixed(1) + ' 백만원';
-  document.getElementById('r_total_need').textContent = r.total_cash_need.toFixed(1) + ' 백만원';
-  
-  document.getElementById('r_year1_tax').textContent = (r.year1_tax * 100).toFixed(0) + '만원';
-  document.getElementById('r_year2_tax').textContent = (r.year2_tax * 100).toFixed(0) + '만원';
-  document.getElementById('r_avg_tax').textContent = (r.avg_annual_tax * 100).toFixed(0) + '만원';
-  document.getElementById('r_total_tax').textContent = r.total_tax_20y.toFixed(1) + ' 백만원';
-  document.getElementById('r_tax_desc').textContent = r.yearly[0].tax_desc;
-  
-  updateChart(r);
-  updateTable(r);
+}
+
+function setText(id, v) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = v;
 }
 
 function setEmpty() {
   ['r_project_irr','r_equity_irr','r_npv','r_payback','r_equity','r_equity_with_fee',
-   'r_total_capex','r_fee','r_total_need','r_year1_tax','r_year2_tax','r_avg_tax','r_total_tax','r_tax_desc'].forEach(id => {
-    document.getElementById(id).textContent = '--';
-  });
-  document.getElementById('yearlyTableBody').innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted); padding:20px">필수 값(용량·투자비·판매가)을 입력하면 결과가 나타납니다</td></tr>';
+   'r_total_capex','r_fee','r_total_need','r_year1_tax','r_year2_tax','r_avg_tax','r_total_tax','r_tax_desc'
+  ].forEach(id => setText(id, '--'));
+  const tbody = document.getElementById('yearlyTableBody');
+  if (tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; color:var(--text-muted); padding:20px">필수 값(용량·투자비·판매가)을 입력하면 결과가 나타납니다</td></tr>';
   if (chartInstance) { chartInstance.destroy(); chartInstance = null; }
 }
 
 let chartInstance = null;
 function updateChart(r) {
   const ctx = document.getElementById('cashflowChart');
-  if (!ctx) return;
+  if (!ctx || typeof Chart === 'undefined') return;
   const labels = r.yearly.map(y => y.year + '년');
   if (chartInstance) chartInstance.destroy();
   chartInstance = new Chart(ctx, {
@@ -437,4 +455,106 @@ function updateTable(r) {
   });
 }
 
-document.addEventListener('DOMContentLoaded', loadAssumptions);
+// ========== 초기화 (DOMContentLoaded 즉시 실행) ==========
+
+function initialize() {
+  console.log('[Renewables] 계산기 초기화 시작');
+
+  // 🎯 모든 input 변경 → 실시간 재계산
+  document.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', (e) => {
+      try {
+        if (e.target.id === 'utilization_pct') syncUtil('pct');
+        if (e.target.id === 'utilization_hr') syncUtil('hr');
+        if (e.target.id === 'capacity_kw') checkLargeProject();
+        recalculate();
+      } catch (err) { console.error('input handler error:', err); }
+    });
+    el.addEventListener('change', () => { try { recalculate(); } catch(e){} });
+  });
+
+  // 🎯 프리셋 버튼들
+  const presetButtons = document.querySelectorAll('[data-preset]');
+  console.log(`[Renewables] 프리셋 버튼 ${presetButtons.length}개 발견`);
+  presetButtons.forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      e.preventDefault();
+      const key = btn.getAttribute('data-preset');
+      console.log('[Renewables] 프리셋 클릭:', key);
+      if (PRESETS[key]) {
+        PRESETS[key]();
+      } else {
+        console.warn('[Renewables] 알 수 없는 프리셋:', key);
+      }
+    });
+  });
+
+  // 🎯 전체 채우기 버튼
+  const fillBtn = document.getElementById('btn_fill_all');
+  if (fillBtn) {
+    fillBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.log('[Renewables] 전체 기본값 버튼 클릭');
+      fillAllDefaults();
+    });
+  } else {
+    console.warn('[Renewables] btn_fill_all 버튼 못 찾음');
+  }
+
+  // 🎯 계산하기 버튼
+  const calcBtn = document.getElementById('btn_calculate');
+  if (calcBtn) {
+    calcBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.log('[Renewables] 계산하기 버튼 클릭');
+      recalculate();
+      // 결과 영역으로 스크롤
+      const resultEl = document.querySelector('.result-sticky');
+      if (resultEl) resultEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
+
+  // 🎯 사업자 유형 라디오
+  document.querySelectorAll('[name="biz_type"]').forEach(r => {
+    r.addEventListener('change', () => {
+      updateTaxUI();
+      recalculate();
+    });
+  });
+
+  // 🎯 PDF/인쇄
+  const pdfBtn = document.getElementById('btn_pdf');
+  if (pdfBtn) {
+    pdfBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      console.log('[Renewables] PDF 버튼 클릭');
+      window.print();
+    });
+  }
+
+  // 🎯 사업자 UI 초기 상태
+  updateTaxUI();
+
+  // 🎯 JSON 로드 시도 (실패해도 fallback 사용)
+  fetch('data/assumptions.json?t=' + Date.now())
+    .then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.json();
+    })
+    .then(data => {
+      ASSUMPTIONS = data;
+      console.log('[Renewables] assumptions.json 로드 성공');
+    })
+    .catch(err => {
+      console.warn('[Renewables] assumptions.json 로드 실패, fallback 사용:', err.message);
+    });
+
+  console.log('[Renewables] 초기화 완료 ✅');
+}
+
+// DOMContentLoaded 또는 이미 로드됨
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initialize);
+} else {
+  initialize();
+}
