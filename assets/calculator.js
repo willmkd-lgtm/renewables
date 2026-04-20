@@ -275,4 +275,238 @@ function calcIncomeTax(taxable_income_won) {
 
 function calculate(inp) {
   const years = 20;
-  const capex
+  const capex = inp.capex_total;
+  const debt = Math.min(inp.loan_amount, capex);
+  const equity = capex - debt;
+  const loan_ratio = capex > 0 ? debt / capex : 0;
+  const annual_principal = inp.repay_years > 0 ? debt / inp.repay_years : 0;
+  const fee_amount = capex * inp.fee_ratio;
+  const equity_with_fee = equity + fee_amount;
+  const total_cash_need = capex + fee_amount;
+  
+  const results = [];
+  let loan_balance = debt;
+  let cumulative_fcff = -capex;
+  let payback_year = null;
+  let total_tax_20y = 0;
+  
+  for (let y = 1; y <= years; y++) {
+    const module_eff = Math.pow(1 - inp.module_decay, y - 1);
+    const generation_mwh = inp.capacity_kw / 1000 * inp.utilization * 8760 * module_eff;
+    const generation_kwh = generation_mwh * 1000;
+    
+    const price_y = inp.inflation_to_sales 
+      ? inp.sales_price * Math.pow(1 + inp.inflation, y - 1)
+      : inp.sales_price;
+    
+    const revenue_mil = generation_kwh * price_y / 1_000_000;  // 백만원
+    const revenue_won = revenue_mil * 1_000_000;               // 원
+    
+    const opex = inp.opex_annual * Math.pow(1 + inp.inflation, y - 1);
+    const depreciation = capex / 20;
+    const rent = inp.rent * Math.pow(1 + inp.inflation, y - 1);
+    const cogs = depreciation + opex + rent;
+    
+    const ebit = revenue_mil - cogs;
+    const interest = loan_balance * inp.interest_rate;
+    const principal = y > inp.grace_years ? Math.min(annual_principal, loan_balance) : 0;
+    const ebt = ebit - interest;
+    
+    // 세금 계산 (사업자 유형 분기)
+    let tax_won = 0;
+    let tax_desc = '';
+    
+    if (inp.biz_type === 'corporate') {
+      // 법인: 단일세율 11%
+      tax_won = Math.max(0, ebt * 1_000_000 * ASSUMPTIONS.financial.corporate_tax_rate);
+      tax_desc = '법인세 11%';
+    } else {
+      // 개인: 단순경비율 → 누진세율
+      const expenseInfo = getSimpleExpenseRate(revenue_won);
+      
+      if (expenseInfo.is_bookkeeping) {
+        // 복식부기: 실제 소득 기준
+        const taxable = ebt * 1_000_000;
+        tax_won = calcIncomeTax(taxable);
+        tax_desc = `복식부기: ${(1-ASSUMPTIONS.financial.personal_standard_expense_rate)*100}% 소득율`;
+      } else {
+        // 단순경비율
+        const deemed_income = revenue_won * (1 - expenseInfo.rate);
+        tax_won = calcIncomeTax(deemed_income);
+        tax_desc = `단순경비율 ${(expenseInfo.rate * 100).toFixed(1)}%`;
+      }
+    }
+    
+    const tax_mil = tax_won / 1_000_000;
+    const net_income = ebt - tax_mil;
+    total_tax_20y += tax_mil;
+    
+    const effective_tax_rate = ebt > 0 ? tax_mil / ebt : 0;
+    const noplat = ebit * (1 - effective_tax_rate);
+    const fcff = noplat + depreciation;
+    const fcfe = fcff - interest * (1 - effective_tax_rate) - principal;
+    
+    results.push({
+      year: y, generation_mwh, revenue: revenue_mil, opex, depreciation, cogs, ebit,
+      interest, principal, loan_balance, ebt, tax: tax_mil, net_income, fcff, fcfe,
+      tax_desc, effective_tax_rate, price_y
+    });
+    
+    loan_balance = Math.max(0, loan_balance - principal);
+    const prev_cum = cumulative_fcff;
+    cumulative_fcff += fcff;
+    if (payback_year === null && cumulative_fcff >= 0 && fcff > 0) {
+      payback_year = y - 1 + Math.abs(prev_cum) / fcff;
+    }
+  }
+  
+  const fcff_flow = [-capex, ...results.map(r => r.fcff)];
+  const fcfe_flow = [-equity, ...results.map(r => r.fcfe)];
+  
+  return {
+    total_capex: capex, fee_amount, total_cash_need,
+    debt, equity, equity_with_fee, loan_ratio, annual_principal,
+    project_irr: calculateIRR(fcff_flow),
+    equity_irr: calculateIRR(fcfe_flow),
+    npv: calculateNPV(fcff_flow, inp.wacc),
+    payback: payback_year,
+    total_tax_20y,
+    avg_annual_tax: total_tax_20y / 20,
+    year1_tax: results[0].tax,
+    year2_tax: results[1].tax,
+    yearly: results, inputs: inp
+  };
+}
+
+function calculateIRR(cf, guess = 0.1) {
+  let rate = guess;
+  for (let i = 0; i < 200; i++) {
+    let npv = 0, dnpv = 0;
+    for (let t = 0; t < cf.length; t++) {
+      const d = Math.pow(1 + rate, t);
+      npv += cf[t] / d;
+      dnpv -= t * cf[t] / (d * (1 + rate));
+    }
+    if (Math.abs(dnpv) < 1e-10) return null;
+    const newRate = rate - npv / dnpv;
+    if (!isFinite(newRate)) return null;
+    if (Math.abs(newRate - rate) < 1e-8) return newRate;
+    rate = Math.max(-0.99, newRate);
+  }
+  return rate;
+}
+
+function calculateNPV(cf, r) {
+  return cf.reduce((s, c, t) => s + c / Math.pow(1 + r, t), 0);
+}
+
+function recalculate() {
+  if (!ASSUMPTIONS) return;
+  updateREC();
+  const inp = getInputs();
+  const r = calculate(inp);
+  currentResult = r;
+  
+  document.getElementById('r_project_irr').textContent = r.project_irr !== null ? (r.project_irr * 100).toFixed(2) + '%' : 'N/A';
+  document.getElementById('r_equity_irr').textContent = r.equity_irr !== null ? (r.equity_irr * 100).toFixed(2) + '%' : 'N/A';
+  document.getElementById('r_npv').textContent = r.npv.toFixed(1) + ' 백만원';
+  document.getElementById('r_payback').textContent = r.payback !== null ? r.payback.toFixed(1) + '년' : '회수 불가';
+  document.getElementById('r_equity').textContent = r.equity.toFixed(1) + ' 백만원';
+  document.getElementById('r_equity_with_fee').textContent = r.equity_with_fee.toFixed(1) + ' 백만원';
+  document.getElementById('r_total_capex').textContent = r.total_capex.toFixed(1) + ' 백만원';
+  document.getElementById('r_fee').textContent = r.fee_amount.toFixed(1) + ' 백만원';
+  document.getElementById('r_total_need').textContent = r.total_cash_need.toFixed(1) + ' 백만원';
+  
+  // 세금 카드
+  document.getElementById('r_year1_tax').textContent = (r.year1_tax * 1_000_000 / 10000).toFixed(0) + '만원';
+  document.getElementById('r_year2_tax').textContent = (r.year2_tax * 1_000_000 / 10000).toFixed(0) + '만원';
+  document.getElementById('r_avg_tax').textContent = (r.avg_annual_tax * 1_000_000 / 10000).toFixed(0) + '만원';
+  document.getElementById('r_total_tax').textContent = r.total_tax_20y.toFixed(1) + ' 백만원';
+  document.getElementById('r_tax_desc').textContent = r.yearly[0].tax_desc;
+  
+  updateChart(r);
+  updateTable(r);
+}
+
+let chartInstance = null;
+function updateChart(r) {
+  const ctx = document.getElementById('cashflowChart');
+  if (!ctx) return;
+  const labels = r.yearly.map(y => y.year + '년');
+  if (chartInstance) chartInstance.destroy();
+  chartInstance = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels,
+      datasets: [
+        { label: '매출', data: r.yearly.map(y => y.revenue), backgroundColor: 'rgba(59,130,246,0.6)', borderColor: '#3b82f6', borderWidth: 1 },
+        { label: '순이익', data: r.yearly.map(y => y.net_income), backgroundColor: 'rgba(16,185,129,0.6)', borderColor: '#10b981', borderWidth: 1 },
+        { label: 'FCFE', data: r.yearly.map(y => y.fcfe), type: 'line', borderColor: '#f59e0b', backgroundColor: 'transparent', borderWidth: 3, tension: 0.3, pointRadius: 3 }
+      ]
+    },
+    options: {
+      responsive: true, maintainAspectRatio: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#f1f5f9' } },
+        tooltip: { backgroundColor: 'rgba(15,23,42,0.95)', callbacks: { label: c => c.dataset.label + ': ' + c.parsed.y.toFixed(1) + ' 백만원' } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#94a3b8', callback: v => v + '백만' } }
+      }
+    }
+  });
+}
+
+function updateTable(r) {
+  const tbody = document.getElementById('yearlyTableBody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+  r.yearly.forEach(y => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${y.year}</td>
+      <td style="text-align:right">${y.generation_mwh.toFixed(1)}</td>
+      <td style="text-align:right">${y.revenue.toFixed(2)}</td>
+      <td style="text-align:right">${y.cogs.toFixed(2)}</td>
+      <td style="text-align:right">${y.ebit.toFixed(2)}</td>
+      <td style="text-align:right">${y.interest.toFixed(2)}</td>
+      <td style="text-align:right; color:#f59e0b">${y.tax.toFixed(2)}</td>
+      <td style="text-align:right">${y.net_income.toFixed(2)}</td>
+      <td style="text-align:right; color:#10b981; font-weight:600">${y.fcfe.toFixed(2)}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+function downloadPDF() {
+  alert('PDF 저장은 회원가입 기능 구축 후 제공됩니다. 지금은 브라우저 인쇄(Ctrl+P)로 저장하세요.');
+  window.print();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  loadAssumptions();
+  
+  document.querySelectorAll('input, select').forEach(el => {
+    el.addEventListener('input', () => {
+      if (el.id === 'capacity_kw') updateCapacityUI();
+      if (el.id === 'rec_type') el.dataset.userChanged = 'true';
+      if (el.id === 'smp_price' || el.id === 'rec_price' || el.id === 'rec_type') updateREC();
+      recalculate();
+    });
+  });
+  
+  document.getElementById('btn_default_loan').addEventListener('click', () => {
+    const capex = parseFloat(document.getElementById('capex_total').value) || 0;
+    document.getElementById('loan_amount').value = (capex * 0.7).toFixed(2);
+    document.getElementById('grace_years').value = 2;
+    document.getElementById('repay_years').value = 18;
+    document.getElementById('interest_rate').value = 5.0;
+    const cb = document.querySelector('[data-target="interest_rate"]');
+    if (cb) { cb.checked = true; document.getElementById('interest_rate').disabled = true; document.getElementById('interest_rate').style.opacity = '0.5'; }
+    recalculate();
+  });
+  
+  document.getElementById('btn_pdf').addEventListener('click', downloadPDF);
+});
