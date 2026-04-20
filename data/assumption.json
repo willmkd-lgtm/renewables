@@ -1,36 +1,29 @@
 {
   "last_updated": "2026-04-20",
-  "admin_note": "Admin만 수정 가능. 사용자는 UI에서 덮어쓸 수 있음.",
+  "admin_note": "Admin만 수정 가능",
   
   "smp": {
     "annual_avg_krw_per_kwh": 111.96,
-    "source": "한국전력거래소(KPX) 2025년 육지 SMP 일평균의 연평균",
-    "period": "2025-01-01 ~ 2025-12-31"
+    "source": "KPX 2025년 육지 SMP 일평균의 연평균"
   },
   
   "rec": {
     "spot_avg_krw": 70000,
-    "source": "한국에너지공단 REC 현물거래 2025년 평균 (추정)",
+    "source": "한국에너지공단 REC 현물거래 2025년 평균",
     "weights": {
-      "under_100kw": 1.2,
-      "100kw_to_3mw": 1.0,
-      "over_3mw": 0.8,
-      "building_solar": 1.5,
-      "floating_solar_under_100kw": 1.6
+      "ground_under_100kw": { "name": "일반부지 100kW 미만", "weight": 1.2 },
+      "ground_100kw_3mw":   { "name": "일반부지 100kW~3MW", "weight": 1.0 },
+      "ground_over_3mw":    { "name": "일반부지 3MW 이상", "weight": 0.8 },
+      "building":           { "name": "건축물 이용", "weight": 1.5 },
+      "floating_under_100": { "name": "수상 태양광 100kW 미만", "weight": 1.6 },
+      "floating_over_100":  { "name": "수상 태양광 100kW 이상", "weight": 1.4 },
+      "forest":             { "name": "임야", "weight": 0.7 }
     }
-  },
-  
-  "fit_integrated": {
-    "under_100kw": 195.96,
-    "100kw_to_3mw": 181.96,
-    "note": "SMP연평균 + (REC×가중치/1000)"
   },
   
   "capex": {
     "default_per_kw_krw": 2300000,
-    "default_total_100kw_krw": 230000000,
-    "contingency_ratio": 0.05,
-    "note": "100kW 기준 통상 2.3억, 200kW 이상은 프로젝트별 편차 큼"
+    "default_total_100kw_krw": 230000000
   },
   
   "loan": {
@@ -43,40 +36,55 @@
   
   "operation": {
     "default_utilization": 0.1667,
-    "utilization_by_region": {
-      "서울": 0.142, "경기": 0.148, "강원": 0.155,
-      "충북": 0.155, "충남": 0.158, "전북": 0.167,
-      "전남": 0.175, "경북": 0.165, "경남": 0.170,
-      "제주": 0.168, "인천": 0.145, "광주": 0.170,
-      "대전": 0.158, "대구": 0.165, "울산": 0.165, "부산": 0.160
-    },
-    "module_decay_per_year": 0.005,
-    "opex_per_kw_initial_krw": 10000,
+    "default_hours_per_day": 4.0,
+    "module_decay_per_year": 0.002,
+    "opex_default_m_krw_per_100kw": 1.2,
     "rent_default": 0
   },
   
   "fees": {
     "default_ratio": 0.10,
-    "note": "한전 인입비, 인허가, 설계감리, 중도상환수수료 등. 2026년 기준 통상 10%",
-    "items": [
-      "한전 계통 접속공사 분담금",
-      "발전사업 허가 수수료",
-      "설계·감리비",
-      "인허가 자문료",
-      "대출 취급수수료",
-      "각종 인지세·등록세",
-      "보험료"
-    ]
+    "note": "한전 인입비 상승 반영 2026년 통상 10%"
   },
   
   "financial": {
-    "inflation": 0.03,
-    "tax_rate": 0.11,
+    "inflation": 0.022,
+    "inflation_source": "한국은행 2024-2025년 CPI 평균",
+    "apply_inflation_to_sales_default": false,
+    
+    "corporate_tax_rate": 0.11,
+    "corporate_tax_note": "중소기업 (과표 2억 이하)",
+    
+    "personal_simple_rate_bands": [
+      { "max_revenue": 36000000, "rate": 0.951, "desc": "수입 3,600만원 미만" },
+      { "max_revenue": 150000000, "rate": 0.8726, "desc": "3,600만~1.5억" },
+      { "max_revenue": 385000000, "rate": 0.8432, "desc": "1.5억~3.85억" }
+    ],
+    "personal_bookkeeping_threshold": 385000000,
+    "personal_standard_expense_rate": 0.238,
+    
+    "income_tax_brackets": [
+      { "max": 14000000, "rate": 0.06, "deduction": 0 },
+      { "max": 50000000, "rate": 0.15, "deduction": 1260000 },
+      { "max": 88000000, "rate": 0.24, "deduction": 5760000 },
+      { "max": 150000000, "rate": 0.35, "deduction": 15440000 },
+      { "max": 300000000, "rate": 0.38, "deduction": 19940000 },
+      { "max": 500000000, "rate": 0.40, "deduction": 25940000 },
+      { "max": 1000000000, "rate": 0.42, "deduction": 35940000 },
+      { "max": null, "rate": 0.45, "deduction": 65940000 }
+    ],
+    "local_income_tax_addon": 0.10,
+    
     "wacc": 0.05,
     "depreciation_years": 20,
     "project_years": 20
   },
   
   "large_project_threshold_kw": 1000,
-  "large_project_message": "1MW 이상 대용량 프로젝트는 별도 맞춤 분석이 필요합니다. contact@renewables.co.kr 로 문의해주세요."
+  
+  "links": {
+    "nts_expense_rate": "https://hometax.go.kr",
+    "nts_expense_rate_description": "국세청 홈택스 → 조회/발급 → 기타조회 → 기준경비율·단순경비율",
+    "business_code_solar": "401000 (태양광 발전업)"
+  }
 }
