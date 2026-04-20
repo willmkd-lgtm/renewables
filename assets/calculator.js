@@ -73,18 +73,23 @@ const PRESETS = {
   loan_amount: () => {
     const capex = num('capex_total');
     if (capex <= 0) { alert('먼저 총 투자비를 입력하세요'); return; }
-    setVal('loan_amount', (capex * 0.7).toFixed(1));
+    // 100kW(230) 기준 160, 그 외는 70% 계산
+    const result = Math.abs(capex - 230) < 0.1 ? 160 : capex * 0.7;
+    setVal('loan_amount', result.toFixed(1));
   },
+
   interest_rate: () => setVal('interest_rate', (ASSUMPTIONS.loan.default_interest_rate * 100).toFixed(1)),
   loan_all: () => {
     const capex = num('capex_total');
     if (capex <= 0) { alert('먼저 총 투자비를 입력하세요'); return; }
-    document.getElementById('loan_amount').value = (capex * 0.7).toFixed(1);
+    const loanAmt = Math.abs(capex - 230) < 0.1 ? 160 : capex * 0.7;
+    document.getElementById('loan_amount').value = loanAmt.toFixed(1);
     document.getElementById('interest_rate').value = 5.0;
     document.getElementById('grace_years').value = 2;
     document.getElementById('repay_years').value = 18;
     recalculate();
   },
+
   smp_price: () => setVal('smp_price', ASSUMPTIONS.smp.annual_avg_krw_per_kwh.toFixed(2)),
   rec_price: () => setVal('rec_price', ASSUMPTIONS.rec.spot_avg_krw),
   rec_weight: () => setVal('rec_weight', '1.2'),
