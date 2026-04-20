@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>로그인 | Renewables</title>
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Pretendard Variable', Pretendard, sans-serif;
+      background: #fafafa;
+      color: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .login-box {
+      width: 100%;
+      max-width: 400px;
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      padding: 40px 32px;
+    }
+    .logo {
+      text-align: center;
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      text-align: center;
+      color: #888;
+      font-size: 13px;
+      margin-bottom: 32px;
+    }
+    .kakao-btn {
+      width: 100%;
+      background: #FEE500;
+      color: #000;
+      border: none;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      margin-bottom: 16px;
+      font-family: inherit;
+    }
+    .kakao-btn:hover { background: #FDD835; }
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      color: #aaa;
+      font-size: 12px;
+      margin: 20px 0;
+    }
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid #e5e5e5;
+    }
+    .divider::before { margin-right: 12px; }
+    .divider::after { margin-left: 12px; }
+    input[type="email"],
+    input[type="password"] {
+      width: 100%;
+      padding: 12px 14px;
+      border: 1px solid #ddd;
+      font-size: 14px;
+      margin-bottom: 10px;
+      font-family: inherit;
+    }
+    input:focus {
+      outline: none;
+      border-color: #1a1a1a;
+    }
+    .login-btn {
+      width: 100%;
+      background: #1a1a1a;
+      color: #fff;
+      border: none;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      margin-top: 6px;
+    }
+    .login-btn:hover { background: #000; }
+    .login-btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .links {
+      margin-top: 20px;
+      text-align: center;
+      font-size: 13px;
+    }
+    .links a {
+      color: #555;
+      text-decoration: none;
+      margin: 0 8px;
+    }
+    .links a:hover { color: #000; }
+    .error {
+      background: #fff5f5;
+      border: 1px solid #ffcdd2;
+      color: #c62828;
+      padding: 10px;
+      font-size: 13px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .back-link {
+      display: block;
+      text-align: center;
+      margin-top: 20px;
+      color: #888;
+      font-size: 12px;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="login-box">
+    <div class="logo">RENEWABLES</div>
+    <div class="subtitle">Insight Platform</div>
+
+    <div id="error" class="error"></div>
+
+    <button class="kakao-btn" onclick="loginWithKakao()">
+      <span>💬</span> 카카오로 시작하기
+    </button>
+
+    <div class="divider">또는 이메일로 로그인</div>
+
+    <form id="login-form" onsubmit="loginWithEmail(event)">
+      <input type="email" id="email" placeholder="이메일" required>
+      <input type="password" id="password" placeholder="비밀번호" required>
+      <button type="submit" class="login-btn" id="submit-btn">로그인</button>
+    </form>
+
+    <div class="links">
+      <a href="/signup.html">회원가입</a>
+      <span style="color:#ddd;">|</span>
+      <a href="#" onclick="resetPassword()">비밀번호 찾기</a>
+    </div>
+
+    <a href="/index.html" class="back-link">← 메인으로 돌아가기</a>
+  </div>
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/supabase-client.js"></script>
+
+  <script>
+    // 이미 로그인 상태면 메인으로 리다이렉트
+    (async () => {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        const redirect = new URLSearchParams(window.location.search).get('redirect') || '/index.html';
+        window.location.href = redirect;
+      }
+    })();
+
+    function showError(msg) {
+      const el = document.getElementById('error');
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+
+    async function loginWithKakao() {
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || '/index.html';
+      const { error } = await supabaseClient.auth.signInWithOAuth({
+        provider: 'kakao',
+        options: {
+          redirectTo: window.location.origin + '/auth-callback.html?redirect=' + encodeURIComponent(redirect)
+        }
+      });
+      if (error) showError('카카오 로그인 실패: ' + error.message);
+    }
+
+    async function loginWithEmail(e) {
+      e.preventDefault();
+      const btn = document.getElementById('submit-btn');
+      btn.disabled = true;
+      btn.textContent = '로그인 중...';
+
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        showError('이메일 또는 비밀번호가 올바르지 않습니다.');
+        btn.disabled = false;
+        btn.textContent = '로그인';
+        return;
+      }
+      
+      const redirect = new URLSearchParams(window.location.search).get('redirect') || '/index.html';
+      window.location.href = redirect;
+    }
+
+    async function resetPassword() {
+      const email = prompt('가입한 이메일을 입력하세요:');
+      if (!email) return;
+      
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin + '/reset-password.html'
+      });
+      
+      if (error) {
+        showError('비밀번호 재설정 메일 발송 실패: ' + error.message);
+      } else {
+        alert('비밀번호 재설정 링크를 이메일로 발송했습니다.');
+      }
+    }
+  </script>
+</body>
+</html>
