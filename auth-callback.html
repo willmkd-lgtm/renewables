@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>로그인 처리 중... | Renewables</title>
+  <style>
+    body { 
+      font-family: sans-serif; display: flex; 
+      align-items: center; justify-content: center;
+      min-height: 100vh; margin: 0; color: #555;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1a1a1a;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 20px;
+    }
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+    .wrap { text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="spinner" style="margin:0 auto 20px;"></div>
+    <div>로그인 처리 중입니다...</div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="/assets/supabase-client.js"></script>
+  <script>
+    // Supabase가 URL의 토큰을 자동 감지해서 세션 저장
+    (async () => {
+      // 1초 정도 대기 (세션 저장 시간)
+      await new Promise(r => setTimeout(r, 1000));
+      
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      
+      if (session) {
+        const redirect = new URLSearchParams(window.location.search).get('redirect') || '/index.html';
+        window.location.href = redirect;
+      } else {
+        alert('로그인 처리 실패. 다시 시도해주세요.');
+        window.location.href = '/login.html';
+      }
+    })();
+  </script>
+</body>
+</html>
