@@ -18,20 +18,22 @@
 <nav class="nav">
   <div class="nav-inner">
     <a href="/" class="logo">⚡ Renewables</a>
-  <div class="nav-links">
-    <a href="index.html"      data-page="home">홈</a>
-    <a href="dashboard.html"  data-page="dashboard">대시보드</a>
-    <a href="calculator.html"   data-page="analysis">사업성분석</a>
-    <a href="board.html"      data-page="board">게시판</a>
-  <div class="auth-area">
-    <a href="login.html" id="loginBtn">로그인</a>
-    <button id="logoutBtn" style="display:none;">로그아웃</button>
-    <span id="userEmail" style="display:none;"></span>
-  <div id="auth-header" style="display:flex; align-items:center;"></div>
-  </div>
 
+    <div class="nav-links">
+      <a href="index.html"     data-page="home">홈</a>
+      <a href="dashboard.html" data-page="dashboard">대시보드</a>
+      <a href="calculator.html" data-page="calculator">사업성분석</a>
+      <a href="board.html"     data-page="board">게시판</a>
+    </div><!-- /.nav-links -->
 
-  </div>
+    <div class="auth-area">
+      <a href="login.html" id="loginBtn">로그인</a>
+      <button id="logoutBtn" style="display:none;">로그아웃</button>
+      <span id="userEmail" style="display:none;"></span>
+      <div id="auth-header" style="display:flex; align-items:center;"></div>
+    </div><!-- /.auth-area -->
+
+  </div><!-- /.nav-inner -->
 </nav>
 
 <section class="hero">
@@ -148,8 +150,11 @@
 <script src="common.js"></script>
   
 <script>
-  renderAuthHeader();
+  document.addEventListener('DOMContentLoaded', () => {
+    if (typeof renderAuthHeader === 'function') renderAuthHeader();
+  });
 </script>
+
 
 <script>
   // 현재 파일명 기준 active 표시
@@ -158,11 +163,11 @@
     const map = {
       'index.html':     'home',
       'dashboard.html': 'dashboard',
-      'analysis.html':  'analysis',
+      'calculator.html':  'calculator',
       'board.html':     'board',
     };
     const current = map[path];
-    document.querySelectorAll('.main-nav a').forEach(a=>{
+    document.querySelectorAll('.nav-links a').forEach(a=>{
       if(a.dataset.page === current) a.classList.add('active');
     });
   })();
