@@ -1,10 +1,10 @@
 // Renewables - 데이터 로더
-// data/chart.json을 읽어와서 renewablesDataLoaded 이벤트 발생
+// data/latest.json을 읽어와서 renewablesDataLoaded 이벤트 발생
 
 (async function loadRenewablesData() {
   try {
     // 캐시 방지를 위해 쿼리스트링 추가
-    const response = await fetch('/data/chart.json?t=' + Date.now());
+    const response = await fetch('/data/latest.json?t=' + Date.now());
     if (!response.ok) throw new Error('HTTP ' + response.status);
     
     const data = await response.json();
