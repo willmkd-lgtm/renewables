@@ -149,7 +149,11 @@
   
 <script>
   renderAuthHeader();
-    (function(){
+</script>
+
+<script>
+  // 현재 파일명 기준 active 표시
+  (function(){
     const path = location.pathname.split('/').pop() || 'index.html';
     const map = {
       'index.html':     'home',
@@ -163,5 +167,6 @@
     });
   })();
 </script>
+
 </body>
 </html>
