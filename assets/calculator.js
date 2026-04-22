@@ -541,7 +541,7 @@ function initialize() {
   updateTaxUI();
 
   // 🎯 JSON 로드 시도 (실패해도 fallback 사용)
-  fetch('data/assumptions.json?t=' + Date.now())
+  fetch('/data/assumptions.json?t=' + Date.now())
     .then(res => {
       if (!res.ok) throw new Error('HTTP ' + res.status);
       return res.json();
