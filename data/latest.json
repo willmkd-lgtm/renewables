@@ -1,30 +1,24 @@
 {
-  "updated_at": "2026-04-23 09:16:48",
+  "updated_at": "2026-04-24 08:32:58",
   "latest": {
-    "date": "2026-04-23",
+    "date": "2026-04-24",
     "smp": {
-      "avg": 115.44,
-      "max": 135.13,
-      "min": 98.39,
-      "change_pct": -2.55
+      "avg": 115.25,
+      "max": 135.24,
+      "min": 98.88,
+      "change_pct": -0.16
     },
     "rec": {
-      "price": 72545,
-      "change_pct": 0.0
+      "price": 72561,
+      "change_pct": 0.02
     }
   },
   "stats_30d": {
-    "smp_avg": 114.24,
+    "smp_avg": 114.34,
     "smp_max": 142.3,
     "smp_min": 72.3
   },
   "chart": [
-    {
-      "date": "2026-03-25",
-      "smp_avg": 112.33,
-      "smp_max": 128.4,
-      "smp_min": 87.5
-    },
     {
       "date": "2026-03-26",
       "smp_avg": 115.67,
@@ -198,6 +192,12 @@
       "smp_avg": 115.44,
       "smp_max": 135.13,
       "smp_min": 98.39
+    },
+    {
+      "date": "2026-04-24",
+      "smp_avg": 115.25,
+      "smp_max": 135.24,
+      "smp_min": 98.88
     }
   ]
 }
